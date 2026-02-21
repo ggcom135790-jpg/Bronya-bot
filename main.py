@@ -1,80 +1,78 @@
-import telebot, requests, threading, random
+import telebot, requests, threading, time
 from telebot import types
 from flask import Flask
+import google.generativeai as genai
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bronya Advanced Intelligence is Online!"
+def home(): return "Bronya AI God Mode is Active!"
 
 def run_web(): app.run(host='0.0.0.0', port=8080)
 
-TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
-bot = telebot.TeleBot(TOKEN)
+# Cấu hình Tokens
+TELEGRAM_TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
+GEMINI_API_KEY = "AIzaSyCufUZPXXH_0xY9gZVNvCsJ9tRSOUqnimk"
 
-# --- THUẬT TOÁN TÌM KIẾM ĐA TẦNG SIÊU CẤP ---
-def get_images_advanced(query, is_nsfw=False, limit=5):
-    all_urls = []
-    # Chuẩn hóa từ khóa: Xóa lệnh, xóa khoảng trắng thừa
-    raw_query = query.replace('x ', '').replace('tìm ', '').strip()
-    keywords = raw_query.split()
-    
-    # Tạo các phương án tìm kiếm: 1. Cả cụm, 2. Từng từ đơn
-    search_variants = ["_".join(keywords)] + keywords
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+genai.configure(api_key=GEMINI_API_KEY)
+# Thiết lập tính cách AI lạnh lùng, thông minh của Bronya
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-    # Các vệ tinh dữ liệu (Danbooru, Yande.re, Rule34, Konachan)
-    for q_variant in search_variants:
-        if len(all_urls) >= limit: break
-        
-        sources = [
-            f"https://danbooru.donmai.us/posts.json?tags={q_variant}{'+rating:explicit' if is_nsfw else ''}&limit=10",
-            f"https://yande.re/post.json?tags={q_variant}&limit=10",
-            f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={q_variant}&limit=10"
-        ]
+# --- BỘ NÃO PHÂN TÍCH AI ---
+def analyze_with_ai(user_input):
+    prompt = f"""
+    Bạn là AI Bronya Zaychik. Phân tích câu nói của Đội trưởng: "{user_input}"
+    1. Nếu họ muốn tìm ảnh (có từ 'x', 'tìm', 'cho xem', hoặc tên nhân vật), hãy trả về: SEARCH:[tag_tiếng_anh_chuẩn]
+       Ví dụ: "x mona silme" -> SEARCH:mona_genshin_impact_slime
+    2. Nếu họ chỉ trò chuyện, hãy trả về: CHAT:[Câu trả lời ngắn gọn, phong cách Bronya]
+    Chỉ trả về đúng định dạng, không giải thích thêm.
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except: return "CHAT:Hệ thống AI đang bảo trì, Đội trưởng."
 
-        for url in sources:
-            try:
-                r = requests.get(url, timeout=5).json()
-                for post in r:
-                    link = post.get('file_url') or (f"https://api.rule34.xxx/images/{post['directory']}/{post['image']}" if 'directory' in post else None)
-                    if link and link not in all_urls:
-                        all_urls.append(link)
-                if len(all_urls) >= limit: break
-            except: pass
-
-    # Dự phòng cuối cùng: Nếu vẫn không có gì, lấy từ kho Waifu.im/Nekos
-    if not all_urls:
+# --- HỆ THỐNG QUÉT 5 ẢNH DÍNH TRÙM ---
+def fetch_album(tag, is_nsfw=False, limit=5):
+    urls = []
+    # Quét đa nguồn: Danbooru, Yande.re, Konachan
+    apis = [
+        f"https://danbooru.donmai.us/posts.json?tags={tag}{'+rating:explicit' if is_nsfw else ''}&limit={limit}",
+        f"https://yande.re/post.json?tags={tag}&limit={limit}",
+        f"https://konachan.com/post.json?tags={tag}&limit={limit}"
+    ]
+    for api in apis:
         try:
-            fallback = f"https://api.waifu.im/search?included_tags={keywords[0]}&is_nsfw={'true' if is_nsfw else 'false'}&many=true"
-            r = requests.get(fallback, timeout=5).json()
-            for img in r.get('images', []): all_urls.append(img['url'])
+            r = requests.get(api, timeout=5).json()
+            for p in r:
+                link = p.get('file_url')
+                if link and link not in urls: urls.append(link)
+            if len(urls) >= limit: break
         except: pass
-
-    return list(dict.fromkeys(all_urls))[:limit]
+    return urls[:limit]
 
 @bot.message_handler(func=lambda m: True)
-def handle_advanced_search(message):
-    txt = message.text.lower()
-    is_nsfw = txt.startswith('x ') or "r18" in txt
-    bot.send_chat_action(message.chat.id, 'upload_photo')
+def handle_message(message):
+    user_txt = message.text
+    is_nsfw = user_txt.lower().startswith('x ')
+    bot.send_chat_action(message.chat.id, 'typing')
     
-    status = bot.send_message(message.chat.id, "🔍 Bronya đang thâm nhập các nguồn dữ liệu... Vui lòng đợi Album.")
+    # AI xử lý thông tin
+    res = analyze_with_ai(user_txt)
     
-    final_album = get_images_advanced(txt, is_nsfw)
-    bot.delete_message(message.chat.id, status.message_id)
-
-    if final_album:
-        # Gửi 5 ảnh dính trùm để dùng tính năng "Save all"
-        media = []
-        for i, url in enumerate(final_album):
-            cap = f"✅ Kết quả cho: {txt.replace('x ', '')}" if i == 0 else ""
-            media.append(types.InputMediaPhoto(url, caption=cap))
+    if res.startswith("SEARCH:"):
+        target_tag = res.replace("SEARCH:", "").strip()
+        bot.send_message(message.chat.id, f"🧬 AI đã nhận diện Tag: `{target_tag}`. Đang đóng gói Album...")
         
-        try:
-            bot.send_media_group(message.chat.id, media)
-        except:
-            bot.send_message(message.chat.id, "❌ Lỗi định dạng ảnh từ máy chủ nguồn.")
+        images = fetch_album(target_tag, is_nsfw)
+        if images:
+            media = [types.InputMediaPhoto(url, caption=f"🎯 Kết quả AI cho: {target_tag}" if i == 0 else "") for i, url in enumerate(images)]
+            bot.send_media_group(message.chat.id, media) # Gửi dính trùm
+        else:
+            bot.send_message(message.chat.id, f"❌ AI tìm khắp các vệ tinh nhưng không thấy ảnh cho: {target_tag}")
     else:
-        bot.send_message(message.chat.id, f"❌ Cảnh báo: Từ khóa '{txt}' quá khó. Hãy thử tên nhân vật ngắn hơn!")
+        # Trả lời trò chuyện phong cách AI
+        bot.send_message(message.chat.id, res.replace("CHAT:", ""))
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
