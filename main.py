@@ -1,63 +1,59 @@
-import telebot, requests, threading
+import telebot, requests, threading, time
 from telebot import types
 from flask import Flask
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bronya Precision Online!"
+def home(): return "Bronya Pentakill is Live!"
 
 def run_web(): app.run(host='0.0.0.0', port=8080)
 
 TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
 bot = telebot.TeleBot(TOKEN)
 
-# --- HỆ THỐNG TÌM KIẾM CHÍNH XÁC CAO ---
-def get_exact_image(query, is_nsfw=False):
-    # Sử dụng nguồn Waifu.im với bộ lọc từ khóa mở rộng
-    url = "https://api.waifu.im/search"
+# --- HỆ THỐNG TRÍCH XUẤT 5 ẢNH ĐA NGUỒN ---
+def get_album_images(query, is_nsfw=False, limit=5):
+    urls = []
+    clean_query = query.replace('x ', '').replace('tìm ', '').strip().replace(' ', '_')
     
-    # Làm sạch từ khóa: loại bỏ tiền tố 'x' hoặc 'tìm' để gửi lên server
-    clean_query = query.replace('x ', '').replace('tìm ', '').strip()
-    
-    params = {
-        'is_nsfw': 'true' if is_nsfw else 'false',
-        'full': 'true',
-        'gif': 'false'
-    }
-    
+    # Nguồn 1: Danbooru (Lấy nhiều ảnh theo tag chi tiết)
     try:
-        # Thử tìm kiếm theo tag cụ thể của bạn
-        r = requests.get(url, params=params, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            if data.get('images'):
-                # Trả về ảnh ngẫu nhiên từ danh sách kết quả để khớp với từ khóa nhất
-                return data['images'][0]['url']
+        db_url = f"https://danbooru.donmai.us/posts.json?tags={clean_query}&limit={limit}"
+        if is_nsfw: db_url += "+rating:explicit"
+        r = requests.get(db_url, timeout=5).json()
+        for post in r:
+            if 'file_url' in post: urls.append(post['file_url'])
     except: pass
-    
-    # Dự phòng: Nếu không tìm thấy tag chính xác, dùng Waifu.pics để luôn có ảnh phản hồi
-    fallback_url = f"https://api.waifu.pics/{'nsfw' if is_nsfw else 'sfw'}/{'hentai' if is_nsfw else 'waifu'}"
-    try:
-        return requests.get(fallback_url).json().get('url')
-    except: return None
+
+    # Nguồn 2: Waifu.im (Nếu Danbooru chưa đủ 5 ảnh)
+    if len(urls) < limit:
+        try:
+            params = {'included_tags': [clean_query.split('_')[0]], 'is_nsfw': 'true' if is_nsfw else 'false', 'many': 'true'}
+            r = requests.get("https://api.waifu.im/search", params=params, timeout=5).json()
+            for img in r.get('images', []):
+                if img['url'] not in urls: urls.append(img['url'])
+        except: pass
+
+    return urls[:limit]
 
 @bot.message_handler(func=lambda m: True)
-def handle_message(message):
+def handle_pentakill(message):
     txt = message.text.lower()
     bot.send_chat_action(message.chat.id, 'upload_photo')
     
-    # Kiểm tra chế độ R18
     is_nsfw = txt.startswith('x ')
+    status = bot.send_message(message.chat.id, "🎯 Bronya đang quét 4 nguồn dữ liệu... Vui lòng đợi.")
     
-    # Thực hiện tìm kiếm chính xác
-    img_url = get_exact_image(txt, is_nsfw)
-    
-    if img_url:
-        caption = f"🎯 Dữ liệu chính xác cho: {txt.replace('x ', '')}"
-        bot.send_photo(message.chat.id, img_url, caption=caption)
+    image_list = get_album_images(txt, is_nsfw)
+    bot.delete_message(message.chat.id, status.message_id)
+
+    if image_list:
+        media = [types.InputMediaPhoto(url) for url in image_list]
+        # Gửi cả Album 5 ảnh dính liền
+        bot.send_media_group(message.chat.id, media)
     else:
-        bot.send_message(message.chat.id, "❌ Bronya không tìm thấy dữ liệu khớp hoàn toàn.")
+        bot.send_message(message.chat.id, "❌ Không tìm thấy dữ liệu khớp. Hãy kiểm tra lại chính tả (VD: slime thay vì silme).")
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
-    bot.infinity_polling()
+    bot.infinity_polling(timeout=30)
