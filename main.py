@@ -4,56 +4,71 @@ from flask import Flask
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bronya Pentakill is Live!"
+def home(): return "Bronya Ultimate Album is Live!"
 
 def run_web(): app.run(host='0.0.0.0', port=8080)
 
 TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
 bot = telebot.TeleBot(TOKEN)
 
-# --- HỆ THỐNG TRÍCH XUẤT 5 ẢNH ĐA NGUỒN ---
-def get_album_images(query, is_nsfw=False, limit=5):
+# --- HỆ THỐNG GOM 5 ẢNH TỪ TẤT CẢ CÁC NGUỒN ---
+def get_ultimate_album(query, is_nsfw=False, limit=5):
     urls = []
-    clean_query = query.replace('x ', '').replace('tìm ', '').strip().replace(' ', '_')
+    # Xử lý từ khóa chuẩn hóa cho các API quốc tế
+    q = query.replace('x ', '').replace('tìm ', '').strip().replace(' ', '_')
     
-    # Nguồn 1: Danbooru (Lấy nhiều ảnh theo tag chi tiết)
-    try:
-        db_url = f"https://danbooru.donmai.us/posts.json?tags={clean_query}&limit={limit}"
-        if is_nsfw: db_url += "+rating:explicit"
-        r = requests.get(db_url, timeout=5).json()
-        for post in r:
-            if 'file_url' in post: urls.append(post['file_url'])
-    except: pass
+    # 1. Quét các kho ảnh lớn nhất (Danbooru, Rule34, Yande.re)
+    api_list = [
+        f"https://danbooru.donmai.us/posts.json?tags={q}&limit={limit}{'+rating:explicit' if is_nsfw else ''}",
+        f"https://yande.re/post.json?tags={q}&limit={limit}",
+        f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={q}&limit={limit}"
+    ]
 
-    # Nguồn 2: Waifu.im (Nếu Danbooru chưa đủ 5 ảnh)
-    if len(urls) < limit:
+    for api_url in api_list:
         try:
-            params = {'included_tags': [clean_query.split('_')[0]], 'is_nsfw': 'true' if is_nsfw else 'false', 'many': 'true'}
-            r = requests.get("https://api.waifu.im/search", params=params, timeout=5).json()
-            for img in r.get('images', []):
-                if img['url'] not in urls: urls.append(img['url'])
+            r = requests.get(api_url, timeout=5).json()
+            for post in r:
+                # Trích xuất URL ảnh từ các cấu trúc JSON khác nhau
+                img = post.get('file_url') or (f"https://api.rule34.xxx/images/{post['directory']}/{post['image']}" if 'directory' in post else None)
+                if img and img not in urls: urls.append(img)
+            if len(urls) >= limit: break
         except: pass
 
-    return urls[:limit]
+    # 2. Nếu vẫn thiếu, quét thêm các kho anime dự phòng (Waifu.im, Nekos.best)
+    if len(urls) < limit:
+        try:
+            r = requests.get(f"https://api.waifu.im/search?included_tags={q.split('_')[0]}&is_nsfw={'true' if is_nsfw else 'false'}&many=true").json()
+            for img in r.get('images', []): urls.append(img['url'])
+        except: pass
+
+    return list(dict.fromkeys(urls))[:limit]
 
 @bot.message_handler(func=lambda m: True)
-def handle_pentakill(message):
+def handle_album(message):
     txt = message.text.lower()
+    is_nsfw = txt.startswith('x ') or "r18" in txt
     bot.send_chat_action(message.chat.id, 'upload_photo')
     
-    is_nsfw = txt.startswith('x ')
-    status = bot.send_message(message.chat.id, "🎯 Bronya đang quét 4 nguồn dữ liệu... Vui lòng đợi.")
+    # Gửi thông báo đang quét đa nguồn
+    status = bot.send_message(message.chat.id, "🛰️ Bronya đang quét toàn bộ vệ tinh ảnh...")
     
-    image_list = get_album_images(txt, is_nsfw)
+    album_list = get_ultimate_album(txt, is_nsfw)
     bot.delete_message(message.chat.id, status.message_id)
 
-    if image_list:
-        media = [types.InputMediaPhoto(url) for url in image_list]
-        # Gửi cả Album 5 ảnh dính liền
-        bot.send_media_group(message.chat.id, media)
+    if album_list:
+        # Đóng gói ảnh thành MediaGroup để "Dính chùm"
+        media = []
+        for i, url in enumerate(album_list):
+            caption = f"🎯 Dữ liệu cho: {txt.replace('x ', '')}" if i == 0 else ""
+            media.append(types.InputMediaPhoto(url, caption=caption))
+        
+        try:
+            bot.send_media_group(message.chat.id, media)
+        except:
+            bot.send_message(message.chat.id, "❌ Lỗi khi đóng gói Album, Đội trưởng thử lại nhé.")
     else:
-        bot.send_message(message.chat.id, "❌ Không tìm thấy dữ liệu khớp. Hãy kiểm tra lại chính tả (VD: slime thay vì silme).")
+        bot.send_message(message.chat.id, f"❌ Không tìm thấy dữ liệu khớp hoàn toàn cho: {txt}")
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
-    bot.infinity_polling(timeout=30)
+    bot.infinity_polling(timeout=40)
