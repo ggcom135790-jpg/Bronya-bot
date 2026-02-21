@@ -7,7 +7,7 @@ def home(): return "Bronya Online!"
 
 def run_web(): app.run(host='0.0.0.0', port=8080)
 
-TOKEN = "8575665648:AAF9CtiaiinOShH83Kr3Mibj_61rY8XTQM"
+TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
 bot = telebot.TeleBot(TOKEN)
 
 # NGUỒN ẢNH MỚI: Ổn định 100% trên Render
