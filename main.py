@@ -1,72 +1,78 @@
-import telebot, requests, threading
+import telebot, requests, threading, random
 from telebot import types
 from flask import Flask
 
-# --- GIỮ BOT ONLINE ---
 app = Flask('')
 @app.route('/')
-def home(): return "Bronya Cloud Pro đang chạy!"
+def home(): return "Bronya Multi-Cloud đang hoạt động!"
 
-def run_web(): 
-    app.run(host='0.0.0.0', port=8080)
+def run_web(): app.run(host='0.0.0.0', port=8080)
 
-# --- CẤU HÌNH BOT ---
 TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
 bot = telebot.TeleBot(TOKEN)
 
-# Hàm lấy ảnh nâng cao từ Waifu.im
-def get_custom_waifu(tags=None, is_nsfw=False):
+# --- HỆ THỐNG ĐA NGUỒN (MULTI-SOURCE) ---
+
+def get_from_waifu_im(tag=None, is_nsfw=False):
     url = "https://api.waifu.im/search"
-    params = {
-        'included_tags': tags if tags else (['hentai'] if is_nsfw else ['waifu']),
-        'is_nsfw': 'true' if is_nsfw else 'false',
-    }
+    params = {'is_nsfw': 'true' if is_nsfw else 'false'}
+    if tag: params['included_tags'] = [tag]
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=5)
         if r.status_code == 200:
-            data = r.json()
-            if data.get('images'):
-                return data['images'][0]['url']
-    except: pass
-    return None
+            return r.json()['images'][0]['url']
+    except: return None
+
+def get_from_waifu_pics(is_nsfw=False):
+    # Nguồn này chuyên ảnh ngẫu nhiên cực nhanh
+    type_path = "nsfw" if is_nsfw else "sfw"
+    category = "waifu"
+    url = f"https://api.waifu.pics/{type_path}/{category}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json().get('url')
+    except: return None
+
+# --- XỬ LÝ LOGIC ---
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
+def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton('🎲 Nhân vật ngẫu nhiên'))
-    text = (
-        "🤖 **Hệ thống Bronya đã nâng cấp!**\n\n"
-        "1. Bấm nút dưới để xem nhân vật ngẫu nhiên.\n"
-        "2. Gõ: `tìm [tên]` để tìm ảnh thường (VD: `tìm raiden shogun`).\n"
-        "3. Gõ: `x [tên]` để tìm ảnh R18 (VD: `x keqing`)."
+    markup.add(types.KeyboardButton('🎲 Ngẫu nhiên'), types.KeyboardButton('🔞 Ngẫu nhiên R18'))
+    msg = (
+        "🤖 **Hệ thống Bronya Multi-Source đã kích hoạt!**\n\n"
+        "✨ **Cách tìm:**\n"
+        "- `tìm [tên]` (VD: `tìm maid`)\n"
+        "- `x [tên]` (VD: `x waifu`)\n"
+        "💡 *Lưu ý: Nếu không tìm thấy tên cụ thể, Bronya sẽ gửi ảnh ngẫu nhiên!*"
     )
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    text = message.text.lower()
+@bot.message_handler(func=lambda m: True)
+def handle_all(message):
+    txt = message.text.lower()
     bot.send_chat_action(message.chat.id, 'upload_photo')
+    
+    is_nsfw = txt.startswith('x ') or txt == '🔞 ngẫu nhiên r18'
+    tag = None
+    if txt.startswith('x '): tag = txt.replace('x ', '').strip()
+    if txt.startswith('tìm '): tag = txt.replace('tìm ', '').strip()
 
-    # 1. Tìm nhân vật ngẫu nhiên (qua nút bấm)
-    if text == '🎲 nhân vật ngẫu nhiên':
-        img = get_custom_waifu()
-        if img: bot.send_photo(message.chat.id, img, caption="🎲 Dữ liệu ngẫu nhiên đã trích xuất.")
-        else: bot.send_message(message.chat.id, "❌ Lỗi hệ thống.")
+    # Bước 1: Thử tìm theo Tag từ Waifu.im trước
+    img_url = get_from_waifu_im(tag, is_nsfw)
+    
+    # Bước 2: Nếu không thấy hoặc là yêu cầu ngẫu nhiên, thử Waifu.pics
+    if not img_url:
+        img_url = get_from_waifu_pics(is_nsfw)
 
-    # 2. Tìm R18 theo tên (Gõ: x tên_nhân_vật)
-    elif text.startswith('x '):
-        name = text.replace('x ', '').strip()
-        img = get_custom_waifu(tags=[name] if name else None, is_nsfw=True)
-        if img: bot.send_photo(message.chat.id, img, caption=f"🔞 Dữ liệu mật về: {name}")
-        else: bot.send_message(message.chat.id, f"❌ Không tìm thấy dữ liệu R18 cho: {name}")
-
-    # 3. Tìm thường theo tên (Gõ: tìm tên_nhân_vật)
-    elif text.startswith('tìm '):
-        name = text.replace('tìm ', '').strip()
-        img = get_custom_waifu(tags=[name] if name else None, is_nsfw=False)
-        if img: bot.send_photo(message.chat.id, img, caption=f"🌸 Dữ liệu về: {name}")
-        else: bot.send_message(message.chat.id, f"❌ Không tìm thấy ảnh cho: {name}")
+    # Bước 3: Gửi ảnh
+    if img_url:
+        caption = f"✅ Dữ liệu từ hệ thống dự phòng" if not tag else f"🌸 Kết quả cho: {tag}"
+        bot.send_photo(message.chat.id, img_url, caption=caption)
+    else:
+        bot.send_message(message.chat.id, "❌ Cả hai máy chủ đều không phản hồi. Đội trưởng hãy thử lại sau!")
 
 if __name__ == "__main__":
-    threading.Thread(target=run_web).start()
-    bot.infinity_polling()
+    threading.Thread(target=run_web, daemon=True).start()
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
