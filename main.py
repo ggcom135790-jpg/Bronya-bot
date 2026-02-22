@@ -1,51 +1,54 @@
 import telebot, requests, threading, os, random
 from flask import Flask
 
+# 1. TẠO CỔNG KẾT NỐI
 app = Flask(__name__)
 @app.route('/')
-def health(): return "Bronya is Live!", 200
+def health(): return "Bronya is Online!", 200
 
+# 2. THÔNG TIN BOT (HÃY KIỂM TRA KỸ TOKEN NÀY)
 TOKEN = "8575665648:AAGkzWJ0eLoDpSUEuS_eGCn-fYC5NqpUS3k"
 bot = telebot.TeleBot(TOKEN)
 
-# Danh sách nhân vật để nút bấm ngẫu nhiên hoạt động
-CHAR_LIST = ["mona", "ganyu", "yelan", "raiden_shogun", "kokomi", "hu_tao", "shenhe"]
+# 3. KHO NHÂN VẬT ĐỂ NÚT BẤM CHẠY TRƠN TRU
+CHAR_DATABASE = ["mona", "ganyu", "yelan", "raiden_shogun", "shirakami_fubuki", "eula", "hu_tao", "nilou"]
 
 @bot.message_handler(func=lambda m: True)
-def handle(message):
-    msg_text = message.text.strip()
+def handle_message(message):
+    text = message.text.strip().lower()
     
     # Xử lý nút bấm ngẫu nhiên
-    if "ngẫu nhiên" in msg_text.lower():
-        target = random.choice(CHAR_LIST)
-        bot.send_message(message.chat.id, f"🎲 Chọn ngẫu nhiên: {target}")
+    if "nhân vật ngẫu nhiên" in text:
+        target = random.choice(CHAR_DATABASE)
+        bot.reply_to(message, f"🎲 Bronya chọn cho ngài: {target}")
     else:
-        # Lấy từ cuối cùng và làm sạch
-        target = msg_text.split()[-1].lower().replace("/", "")
+        # Tự động lấy từ khóa cuối cùng và bỏ dấu gạch chéo
+        target = text.split()[-1].replace("/", "")
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
     
     try:
-        # Headers xịn để kho ảnh không chặn
+        # Thêm Header xịn để không bị kho ảnh chặn
         headers = {'User-Agent': 'Mozilla/5.0'}
         api_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={target}&limit=5"
         
         r = requests.get(api_url, headers=headers, timeout=10).json()
         
-        if r and isinstance(r, list):
+        if r and isinstance(r, list) and len(r) > 0:
             media = [telebot.types.InputMediaPhoto(p['file_url']) for p in r if 'file_url' in p]
-            if media:
-                bot.send_media_group(message.chat.id, media)
-            else:
-                bot.send_message(message.chat.id, f"❌ Không tìm thấy ảnh cho: {target}")
+            bot.send_media_group(message.chat.id, media)
         else:
-            bot.send_message(message.chat.id, f"❌ Kho ảnh không có kết quả cho: {target}")
-    except:
-        pass
+            bot.send_message(message.chat.id, f"❌ Kho ảnh không phản hồi với từ khóa: {target}")
+    except Exception as e:
+        # Nếu lỗi 401 xảy ra, bot sẽ im lặng thay vì spam lỗi
+        print(f"Log lỗi: {e}")
 
+# 4. CHẠY ĐA LUỒNG
 def run_bot():
-    bot.remove_webhook()
-    bot.infinity_polling(skip_pending=True)
+    try:
+        bot.remove_webhook()
+        bot.infinity_polling(skip_pending=True)
+    except: pass
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
