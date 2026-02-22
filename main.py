@@ -6,60 +6,56 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 @app.route('/')
-def health(): return "Bronya Multi-Universe Online!", 200
+def health(): return "Bronya Multi-Source R18 Online!", 200
 
-# Danh sách ngẫu nhiên cực rộng để Đội trưởng không chán
-RANDOM_POOL = ["mona", "yelan", "tifa_lockhart", "2b", "makima", "fubuki", "mikasa_ackerman", "yor_forger", "kafka_(honkai:_star_rail)", "firefly_(honkai:_star_rail)"]
+# Các nguồn ảnh R18 đa dạng
+SOURCES = [
+    {"name": "Rule34", "api": "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags="},
+    {"name": "Gelbooru", "api": "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="},
+    {"name": "Realbooru", "api": "https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="}
+]
 
 @bot.message_handler(func=lambda m: True)
 def handle_logic(message):
     raw_text = message.text.strip().lower()
-    
-    # 1. Kiểm tra chế độ R18
     is_r18 = "r18" in raw_text
-    # Loại bỏ chữ r18 và các từ khóa thừa để lấy tên nhân vật sạch
-    clean_name = raw_text.replace("r18", "").replace("tìm ảnh", "").replace("cho xem", "").strip()
     
-    # 2. Xử lý tên nhân vật (Đa dạng hóa)
-    if "ngẫu nhiên" in clean_name or not clean_name:
-        target = random.choice(RANDOM_POOL)
-    else:
-        # Tự động thay dấu cách bằng dấu gạch dưới (Quy tắc kho ảnh)
-        # Ví dụ: "yae miko" -> "yae_miko"
-        target = clean_name.replace(" ", "_")
+    # Làm sạch tên để tìm đa dạng nhân vật
+    target = raw_text.replace("r18", "").replace("tìm", "").strip().replace(" ", "_")
+    
+    if not target or "ngẫu nhiên" in target:
+        target = random.choice(["mona", "yelan", "tifa_lockhart", "raiden_shogun", "2b", "makima", "firefly_(honkai:_star_rail)"])
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
     
+    # CHỐNG TRÙNG: Chọn ngẫu nhiên 1 trong 3 nguồn và 1 trang ngẫu nhiên (pid)
+    source = random.choice(SOURCES)
+    random_page = random.randint(0, 30)
+    
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        # Tag R18 chuẩn: rating:explicit
         tags = f"{target} rating:explicit" if is_r18 else f"{target} rating:general"
-        
-        # Chống trùng lặp bằng cách nhảy trang ngẫu nhiên
-        random_page = random.randint(0, 30)
-        api_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tags}&limit=5&pid={random_page}"
+        api_url = f"{source['api']}{tags}&limit=5&pid={random_page}"
         
         data = requests.get(api_url, headers=headers, timeout=15).json()
-        
-        if data and len(data) > 0:
-            random.shuffle(data)
-            media = [telebot.types.InputMediaPhoto(p['file_url']) for p in data if 'file_url' in p]
+        posts = data if isinstance(data, list) else data.get('post', [])
+
+        if posts:
+            random.shuffle(posts) # Xáo trộn ảnh để không trùng
+            media = []
+            for p in posts[:5]:
+                url = p.get('file_url') or p.get('sample_url')
+                if url:
+                    if url.startswith('//'): url = 'https:' + url
+                    media.append(telebot.types.InputMediaPhoto(url))
             bot.send_media_group(message.chat.id, media)
         else:
-            # Fallback nếu trang ngẫu nhiên không có ảnh
-            fallback_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tags}&limit=5&pid=0"
-            res = requests.get(fallback_url, headers=headers).json()
-            if res:
-                media = [telebot.types.InputMediaPhoto(p['file_url']) for p in res]
-                bot.send_media_group(message.chat.id, media)
-            else:
-                bot.send_message(message.chat.id, f"❌ Bronya không tìm thấy nhân vật: {target}\n💡 Mẹo: Hãy gõ tên tiếng Anh chuẩn của nhân vật đó!")
-                
+            bot.send_message(message.chat.id, f"❌ {source['name']} không có ảnh cho: {target}. Thử lại lần nữa để bot đổi nguồn khác nhé!")
     except:
-        bot.send_message(message.chat.id, "⚠️ Kho ảnh đang quá tải hoặc tên quá lạ!")
+        bot.send_message(message.chat.id, "⚠️ Nguồn ảnh đang bảo trì, Đội trưởng đợi chút nhé!")
 
 def run():
-    bot.remove_webhook()
+    bot.remove_webhook() # Diệt lỗi 409
     bot.infinity_polling(skip_pending=True)
 
 if __name__ == "__main__":
