@@ -21,7 +21,7 @@ def handle_logic(message):
     target = raw_text.replace("r18", "").replace("tìm", "").strip().replace(" ", "_")
     
     if not target or "ngẫu nhiên" in target:
-        target = random.choice(["mona", "yelan", "tifa_lockhart", "raiden_shogun", "2b", "makima"])
+        target = random.choice(["mona", "yelan", "tifa_lockhart", "raiden_shogun", "2b", "makima", "firefly_(honkai:_star_rail)"])
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
     source = random.choice(SOURCES)
@@ -29,7 +29,7 @@ def handle_logic(message):
     
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        # Sửa lỗi logic tag tại đây
+        # SỬA LỖI TẠI ĐÂY: Dùng dấu + để API nhận diện đúng tag
         search_tags = f"{target}+rating:explicit" if is_r18 else f"{target}+rating:general"
         api_url = f"{source['api']}{search_tags}&limit=5&pid={random_page}"
         
@@ -45,17 +45,11 @@ def handle_logic(message):
                 if url:
                     if url.startswith('//'): url = 'https:' + url
                     media.append(telebot.types.InputMediaPhoto(url))
-            if media:
-                bot.send_media_group(message.chat.id, media)
-            else:
-                bot.send_message(message.chat.id, "❌ Không lấy được link ảnh, thử lại nhé!")
+            bot.send_media_group(message.chat.id, media)
         else:
             bot.send_message(message.chat.id, f"❌ {source['name']} không tìm thấy ảnh cho: {target}")
-                
-    except Exception as e:
-        # In lỗi ra Logs để dễ bắt bệnh
-        print(f"Error: {e}")
-        bot.send_message(message.chat.id, "⚠️ Nguồn ảnh đang bận, Đội trưởng thử lại lần nữa nhé!")
+    except:
+        bot.send_message(message.chat.id, "⚠️ Nguồn ảnh đang bận, Đội trưởng thử lại nhé!")
 
 def run():
     bot.remove_webhook()
