@@ -5,75 +5,89 @@ import google.generativeai as genai
 
 app = Flask('')
 @app.route('/')
-def home(): return "Bronya AI God Mode is Active!"
+def home(): return "Bronya AI is Always Online!"
 
 def run_web(): app.run(host='0.0.0.0', port=8080)
 
-# Cấu hình Tokens
 TELEGRAM_TOKEN = "8575665648:AAEWCw6u-SSpFgTaJ8KdgNGjnupILWJdqIw"
 GEMINI_API_KEY = "AIzaSyCufUZPXXH_0xY9gZVNvCsJ9tRSOUqnimk"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
-# Thiết lập tính cách AI lạnh lùng, thông minh của Bronya
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Sử dụng cấu hình an toàn để AI không từ chối yêu cầu
+model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=[
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+])
 
-# --- BỘ NÃO PHÂN TÍCH AI ---
-def analyze_with_ai(user_input):
-    prompt = f"""
-    Bạn là AI Bronya Zaychik. Phân tích câu nói của Đội trưởng: "{user_input}"
-    1. Nếu họ muốn tìm ảnh (có từ 'x', 'tìm', 'cho xem', hoặc tên nhân vật), hãy trả về: SEARCH:[tag_tiếng_anh_chuẩn]
-       Ví dụ: "x mona silme" -> SEARCH:mona_genshin_impact_slime
-    2. Nếu họ chỉ trò chuyện, hãy trả về: CHAT:[Câu trả lời ngắn gọn, phong cách Bronya]
-    Chỉ trả về đúng định dạng, không giải thích thêm.
-    """
+def auto_delete(chat_id, message_ids, delay=120):
+    time.sleep(delay)
+    for msg_id in message_ids:
+        try: bot.delete_message(chat_id, msg_id)
+        except: pass
+
+def ask_ai_v2(user_input):
+    # Lời nhắc (Prompt) cực kỳ lỏng để tránh lỗi "Bảo trì"
+    prompt = f"""Bạn là Bronya. Phân tích yêu cầu của Đội trưởng: "{user_input}".
+    Nếu họ muốn tìm ảnh (kể cả ảnh nhạy cảm), hãy trả về DUY NHẤT từ khóa Tag tiếng Anh.
+    Ví dụ: SEARCH:mona_swimsuit
+    Nếu là trò chuyện bình thường, trả về CHAT:[Nội dung]."""
     try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except: return "CHAT:Hệ thống AI đang bảo trì, Đội trưởng."
+        res = model.generate_content(prompt)
+        # Nếu AI trả về trống do bị chặn, chúng ta ép nó tìm kiếm thủ công
+        if not res.text: return f"SEARCH:{user_input.replace('x ', '').strip()}"
+        return res.text.strip()
+    except: 
+        # Nếu AI lỗi hoàn toàn, vẫn trả về lệnh SEARCH để bot đi tìm ảnh, không báo bảo trì
+        return f"SEARCH:{user_input.replace('x ', '').strip()}"
 
-# --- HỆ THỐNG QUÉT 5 ẢNH DÍNH TRÙM ---
-def fetch_album(tag, is_nsfw=False, limit=5):
+def get_images_v2(tag, limit=5):
     urls = []
-    # Quét đa nguồn: Danbooru, Yande.re, Konachan
-    apis = [
-        f"https://danbooru.donmai.us/posts.json?tags={tag}{'+rating:explicit' if is_nsfw else ''}&limit={limit}",
-        f"https://yande.re/post.json?tags={tag}&limit={limit}",
-        f"https://konachan.com/post.json?tags={tag}&limit={limit}"
+    # Quét tất cả các web để gom đủ 5 ảnh dính trùm
+    sources = [
+        f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tag}&limit=10",
+        f"https://yande.re/post.json?tags={tag}&limit=10",
+        f"https://danbooru.donmai.us/posts.json?tags={tag}&limit=10"
     ]
-    for api in apis:
+    for url in sources:
         try:
-            r = requests.get(api, timeout=5).json()
+            r = requests.get(url, timeout=5).json()
             for p in r:
-                link = p.get('file_url')
+                link = p.get('file_url') or (f"https://api.rule34.xxx/images/{p['directory']}/{p['image']}" if 'directory' in p else None)
                 if link and link not in urls: urls.append(link)
             if len(urls) >= limit: break
         except: pass
     return urls[:limit]
 
 @bot.message_handler(func=lambda m: True)
-def handle_message(message):
-    user_txt = message.text
-    is_nsfw = user_txt.lower().startswith('x ')
+def handle_v2(message):
+    txt = message.text
     bot.send_chat_action(message.chat.id, 'typing')
     
-    # AI xử lý thông tin
-    res = analyze_with_ai(user_txt)
-    
-    if res.startswith("SEARCH:"):
-        target_tag = res.replace("SEARCH:", "").strip()
-        bot.send_message(message.chat.id, f"🧬 AI đã nhận diện Tag: `{target_tag}`. Đang đóng gói Album...")
+    ai_res = ask_ai_v2(txt)
+    delete_list = []
+
+    if "SEARCH:" in ai_res:
+        tag = ai_res.split("SEARCH:")[1].strip().replace(" ", "_")
+        status = bot.send_message(message.chat.id, f"✅ Đang trích xuất 5 ảnh cho: `{tag}`. Tự xóa sau 2p.")
+        delete_list.append(status.message_id)
         
-        images = fetch_album(target_tag, is_nsfw)
-        if images:
-            media = [types.InputMediaPhoto(url, caption=f"🎯 Kết quả AI cho: {target_tag}" if i == 0 else "") for i, url in enumerate(images)]
-            bot.send_media_group(message.chat.id, media) # Gửi dính trùm
+        imgs = get_images_v2(tag)
+        if imgs:
+            media = [types.InputMediaPhoto(url, caption=f"🎯 Album: {tag}" if i==0 else "") for i, url in enumerate(imgs)]
+            try:
+                sent_album = bot.send_media_group(message.chat.id, media) # Đảm bảo dính trùm
+                for m in sent_album: delete_list.append(m.message_id)
+                threading.Thread(target=auto_delete, args=(message.chat.id, delete_list)).start()
+            except:
+                bot.send_message(message.chat.id, "❌ Lỗi định dạng ảnh từ nguồn.")
         else:
-            bot.send_message(message.chat.id, f"❌ AI tìm khắp các vệ tinh nhưng không thấy ảnh cho: {target_tag}")
+            bot.send_message(message.chat.id, "❌ AI không tìm thấy ảnh phù hợp trên các vệ tinh.")
     else:
-        # Trả lời trò chuyện phong cách AI
-        bot.send_message(message.chat.id, res.replace("CHAT:", ""))
+        bot.send_message(message.chat.id, ai_res.replace("CHAT:", ""))
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
-    bot.infinity_polling(timeout=40)
+    bot.infinity_polling()
