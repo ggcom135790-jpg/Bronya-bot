@@ -7,7 +7,7 @@ app = Flask(__name__)
 def health(): return "Bronya is Live!", 200
 
 # 2. THÔNG TIN BOT (DÙNG TOKEN MỚI CỦA NGÀI)
-TOKEN = "8575665648:AAFxvxgoqfHrVjE-gAcwlH6m3BlbgBkwP2k"
+TOKEN = "8575665648:AAFaCc7zwb7HYs-NSYvoXvHYUUy3TTVebgs"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda m: True)
