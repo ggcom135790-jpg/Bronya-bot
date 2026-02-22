@@ -8,10 +8,11 @@ app = Flask(__name__)
 @app.route('/')
 def health(): return "Bronya Multi-Source R18 Online!", 200
 
+# Đã loại bỏ Rule34 và thêm Konachan/Yande.re
 SOURCES = [
-    {"name": "Rule34", "api": "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags="},
     {"name": "Gelbooru", "api": "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="},
-    {"name": "Realbooru", "api": "https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="}
+    {"name": "Realbooru", "api": "https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="},
+    {"name": "Konachan", "api": "https://konachan.com/post.json?tags="}
 ]
 
 @bot.message_handler(func=lambda m: True)
@@ -25,16 +26,22 @@ def handle_logic(message):
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
     source = random.choice(SOURCES)
-    random_page = random.randint(0, 20)
+    random_page = random.randint(1, 10)
     
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
+        # Cấu trúc tag ổn định hơn
         search_tags = f"{target}+rating:explicit" if is_r18 else f"{target}+rating:general"
-        api_url = f"{source['api']}{search_tags}&limit=5&pid={random_page}"
+        
+        # Xử lý riêng cho Konachan vì cấu trúc URL khác một chút
+        if source['name'] == "Konachan":
+            api_url = f"{source['api']}{search_tags}&limit=5"
+        else:
+            api_url = f"{source['api']}{search_tags}&limit=5&pid={random_page}"
         
         response = requests.get(api_url, headers=headers, timeout=15)
-        data = response.json()
-        posts = data if isinstance(data, list) else data.get('post', [])
+        posts = response.json()
+        if not isinstance(posts, list): posts = posts.get('post', [])
 
         if posts:
             random.shuffle(posts)
@@ -46,8 +53,9 @@ def handle_logic(message):
                     media.append(telebot.types.InputMediaPhoto(url))
             bot.send_media_group(message.chat.id, media)
         else:
-            bot.send_message(message.chat.id, f"❌ {source['name']} không tìm thấy ảnh cho: {target}")
-    except:
+            bot.send_message(message.chat.id, f"❌ {source['name']} không có ảnh cho: {target}")
+    except Exception as e:
+        print(f"Error: {e}")
         bot.send_message(message.chat.id, "⚠️ Nguồn ảnh đang bận, Đội trưởng thử lại nhé!")
 
 def run():
