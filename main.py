@@ -29,7 +29,6 @@ def handle_logic(message):
     
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        # SỬA LỖI TẠI ĐÂY: Dùng dấu + để API nhận diện đúng tag
         search_tags = f"{target}+rating:explicit" if is_r18 else f"{target}+rating:general"
         api_url = f"{source['api']}{search_tags}&limit=5&pid={random_page}"
         
