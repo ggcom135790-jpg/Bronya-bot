@@ -1,35 +1,35 @@
 import telebot, requests, threading, os, random
 from flask import Flask
 
-# 1. TẠO CỔNG KẾT NỐI
+# Cổng kết nối cho Render
 app = Flask(__name__)
 @app.route('/')
 def health(): return "Bronya is Online!", 200
 
-# 2. THÔNG TIN BOT (HÃY KIỂM TRA KỸ TOKEN NÀY)
-TOKEN = "8575665648:AAGkzWJ0eLoDpSUEuS_eGCn-fYC5NqpUS3k"
+# ⚠️ HÃY THAY TOKEN MỚI NHẤT TỪ BOTFATHER VÀO ĐÂY
+TOKEN = "8575665648:AAGw9Uqqe7Z42f2dkv2ii2pEVZPbXq_ON4E"
 bot = telebot.TeleBot(TOKEN)
 
-# 3. KHO NHÂN VẬT ĐỂ NÚT BẤM CHẠY TRƠN TRU
-CHAR_DATABASE = ["mona", "ganyu", "yelan", "raiden_shogun", "shirakami_fubuki", "eula", "hu_tao", "nilou"]
+# Danh sách nhân vật để nút bấm chạy mượt mà
+CHARS = ["mona", "ganyu", "yelan", "raiden_shogun", "kokomi", "hu_tao", "shenhe", "eula", "nilou"]
 
 @bot.message_handler(func=lambda m: True)
-def handle_message(message):
+def handle(message):
     text = message.text.strip().lower()
     
-    # Xử lý nút bấm ngẫu nhiên
-    if "nhân vật ngẫu nhiên" in text:
-        target = random.choice(CHAR_DATABASE)
-        bot.reply_to(message, f"🎲 Bronya chọn cho ngài: {target}")
+    # Xử lý thông minh cho nút bấm
+    if "ngẫu nhiên" in text:
+        target = random.choice(CHARS)
+        bot.send_message(message.chat.id, f"🎲 Bronya chọn ngẫu nhiên: {target}")
     else:
-        # Tự động lấy từ khóa cuối cùng và bỏ dấu gạch chéo
-        target = text.split()[-1].replace("/", "")
+        # Loại bỏ các ký tự thừa như /, x, tìm ảnh...
+        target = text.split()[-1].replace("/", "").replace("x", "")
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
     
     try:
-        # Thêm Header xịn để không bị kho ảnh chặn
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        # Headers giả lập trình duyệt để kho ảnh không chặn
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         api_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={target}&limit=5"
         
         r = requests.get(api_url, headers=headers, timeout=10).json()
@@ -38,12 +38,11 @@ def handle_message(message):
             media = [telebot.types.InputMediaPhoto(p['file_url']) for p in r if 'file_url' in p]
             bot.send_media_group(message.chat.id, media)
         else:
-            bot.send_message(message.chat.id, f"❌ Kho ảnh không phản hồi với từ khóa: {target}")
+            bot.send_message(message.chat.id, f"❌ Kho ảnh chưa cập nhật dữ liệu cho: {target}")
     except Exception as e:
-        # Nếu lỗi 401 xảy ra, bot sẽ im lặng thay vì spam lỗi
-        print(f"Log lỗi: {e}")
+        # Log lỗi ra console của Render để theo dõi
+        print(f"Lỗi: {e}")
 
-# 4. CHẠY ĐA LUỒNG
 def run_bot():
     try:
         bot.remove_webhook()
@@ -52,4 +51,5 @@ def run_bot():
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
+    # Mở cổng cho Render quét Port
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
