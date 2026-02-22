@@ -5,7 +5,7 @@ app = Flask(__name__)
 @app.route('/')
 def health(): return "Bronya is Live!", 200
 
-TOKEN = "8575665648:AAFaCc7zwb7HYs-NSYvoXvHYUUy3TTVebgs"
+TOKEN = "8575665648:AAGkzWJ0eLoOpsUEuS_eGCn-fYC5NqpUS3k"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda m: True)
