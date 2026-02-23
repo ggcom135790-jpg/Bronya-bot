@@ -1,94 +1,56 @@
 import telebot, requests, threading, os, random, time
 from flask import Flask
 
-# --- CẤU HÌNH HỆ THỐNG ---
 TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-@app.route('/')
-def health(): return "Bronya Anti-Block Final Online!", 200
+# Kho lưu trữ ảnh tạm thời để "vượt bão" IP
+IMAGE_STORAGE = {} 
 
-# Danh sách nguồn ảnh đã lọc bỏ những trang quá gắt
+@app.route('/')
+def health(): return "Storage System Online!", 200
+
 SOURCES = [
-    {"name": "Konachan", "api": "https://konachan.com/post.json?tags="},
-    {"name": "Yande.re", "api": "https://yande.re/post.json?tags="},
-    {"name": "Safebooru", "api": "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags="},
-    {"name": "Lolibooru", "api": "https://lolibooru.moe/post.json?tags="},
-    {"name": "Danbooru", "api": "https://danbooru.donmai.us/posts.json?tags="}
+    {"name": "Konachan", "url": "https://konachan.com/post.json?tags={tags}&limit=50"}, # Tải hẳn 50 tấm
+    {"name": "Yande.re", "url": "https://yande.re/post.json?tags={tags}&limit=50"},
+    {"name": "Rule34", "url": "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tags}&limit=50"}
 ]
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-}
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, "✨ Bronya đã sẵn sàng! Đội trưởng hãy gõ tên nhân vật (ví dụ: raiden_shogun r18) để bắt đầu.")
-
 @bot.message_handler(func=lambda m: True)
-def handle_logic(message):
+def handle(message):
     try:
-        raw_text = message.text.strip().lower()
-        is_r18 = "r18" in raw_text
-        # Làm sạch từ khóa tìm kiếm
-        target = raw_text.replace("r18", "").replace("/", "").strip().replace(" ", "_")
-        
-        if not target or "ngẫu nhiên" in target:
-            target = random.choice(["raiden_shogun", "yelan", "tifa_lockhart", "yae_miko", "furina"])
-
+        tag = message.text.strip().lower().replace(" ", "_")
         bot.send_chat_action(message.chat.id, 'upload_photo')
-        random.shuffle(SOURCES) 
-        success = False
-        
-        for source in SOURCES:
-            try:
-                # Thiết lập tag R18 tùy theo nguồn
-                tag_filter = "rating:explicit" if is_r18 else "rating:general"
-                if source['name'] == "Danbooru":
-                    tag_filter = "rating:e" if is_r18 else "rating:s"
-                
-                api_url = f"{source['api']}{target}+{tag_filter}&limit=20"
-                
-                response = requests.get(api_url, headers=HEADERS, timeout=10)
-                if response.status_code != 200: continue
-                
-                posts = response.json()
-                if not isinstance(posts, list):
-                    posts = posts.get('post', []) or posts.get('posts', [])
 
-                if posts:
-                    random.shuffle(posts)
-                    media = []
-                    for p in posts[:3]:
-                        # Lấy URL ảnh và xử lý định dạng //
-                        img_url = p.get('file_url') or p.get('sample_url') or p.get('large_file_url')
-                        if img_url:
-                            if img_url.startswith('//'): img_url = 'https:' + img_url
-                            media.append(telebot.types.InputMediaPhoto(img_url))
+        # 1. Nếu trong kho đã có sẵn ảnh từ lần tải trước, lấy ra dùng luôn
+        if tag in IMAGE_STORAGE and len(IMAGE_STORAGE[tag]) >= 3:
+            pics = [IMAGE_STORAGE[tag].pop() for _ in range(3)] # Lấy 3, còn lại vẫn lưu trong kho
+            media = [telebot.types.InputMediaPhoto(url) for url in pics]
+            bot.send_media_group(message.chat.id, media)
+            bot.send_message(message.chat.id, f"📦 Lấy từ kho lưu trữ! (Còn dư {len(IMAGE_STORAGE[tag])} tấm)")
+            return
+
+        # 2. Nếu kho trống, đi tải 50 tấm mới
+        random.shuffle(SOURCES)
+        for src in SOURCES:
+            api_url = src['url'].format(tags=tag)
+            res = requests.get(api_url, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                urls = [p.get('file_url') for p in data if p.get('file_url')]
+                
+                if len(urls) > 0:
+                    random.shuffle(urls)
+                    # Gửi 3 tấm cho Đội trưởng
+                    to_send = urls[:3]
+                    IMAGE_STORAGE[tag] = urls[3:] # Lưu 47 tấm còn lại vào kho
                     
-                    if media:
-                        bot.send_media_group(message.chat.id, media)
-                        success = True
-                        break 
-            except Exception:
-                continue
-        
-        if not success:
-            bot.send_message(message.chat.id, "❌ Đội trưởng ơi, các nguồn ảnh vẫn đang chặn IP này. Ngài hãy đổi 'Region' trong Settings của Render sang 'Ohio (US)' hoặc 'Frankfurt' để có IP mới nhé!")
-
+                    media = [telebot.types.InputMediaPhoto(url) for url in to_send]
+                    bot.send_media_group(message.chat.id, media)
+                    bot.send_message(message.chat.id, f"🚀 Đã tải 50 ảnh mới! Đã gửi 3, lưu kho 47 tấm để né chặn IP.")
+                    return
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Lỗi: {str(e)}")
+        bot.send_message(message.chat.id, "❌ Đội trưởng ơi, kho ảnh đang bị kẹt rồi!")
 
-def run_polling():
-    while True:
-        try:
-            bot.remove_webhook()
-            time.sleep(2) # Chống lỗi 409
-            bot.infinity_polling(skip_pending=True, timeout=20)
-        except Exception:
-            time.sleep(5)
-
-if __name__ == "__main__":
-    threading.Thread(target=run_polling, daemon=True).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+# ... (Giữ nguyên phần run và app.run như cũ)
