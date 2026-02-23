@@ -1,7 +1,7 @@
 import telebot, os, threading
 from flask import Flask
 
-# 1. Khai báo bot trước
+# Đưa phần khai báo TOKEN lên đầu tiên để tránh lỗi NameError
 TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
@@ -9,7 +9,7 @@ app = Flask(__name__)
 @app.route('/')
 def health(): return "Bronya ID-Finder Online!", 200
 
-# 2. Lệnh lấy ID (Dán sau khi đã có 'bot')
+# Lệnh /start để lấy ID nhóm ngay lập tức
 @bot.message_handler(commands=['start'])
 def send_id(m):
     chat_id = m.chat.id
@@ -17,13 +17,12 @@ def send_id(m):
         "✨ **Bronya ID-Finder**\n\n"
         f"📍 ID của nhóm này là: `{chat_id}`\n"
         "--------------------------\n"
-        "👉 Đội trưởng hãy copy dãy số trên (bao gồm cả dấu trừ) "
-        "và dán vào Render mục Environment với tên là CHANNEL_ID nhé!"
+        "👉 Đội trưởng copy dãy số trên (có cả dấu trừ) dán vào Render nhé!"
     )
     bot.send_message(m.chat.id, text, parse_mode='Markdown')
 
-# 3. Giữ bot luôn sống
 def run_bot():
+    # Bỏ qua các tin nhắn cũ để bot không bị lag khi khởi động
     bot.infinity_polling(skip_pending=True)
 
 if __name__ == "__main__":
