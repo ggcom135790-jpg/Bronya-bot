@@ -1,98 +1,92 @@
 import telebot, requests, threading, os, random, time
 from flask import Flask
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# 1. Cấu hình hệ thống
+# --- CẤU HÌNH HỆ THỐNG ---
 TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
-def health(): return "Bronya Anti-Block System Online!", 200
+def health(): return "Bronya Omega System Online!", 200
 
-# 2. Danh sách 7 nguồn ảnh "lốp dự phòng" dày đặc
+# Tạo Session với cơ chế tự động thử lại (Retry) khi gặp lỗi kết nối
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+session.mount('https://', HTTPAdapter(max_retries=retries))
+
 SOURCES = [
     {"name": "Rule34", "api": "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags="},
     {"name": "Gelbooru", "api": "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="},
     {"name": "Realbooru", "api": "https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags="},
     {"name": "Konachan", "api": "https://konachan.com/post.json?tags="},
     {"name": "Yande.re", "api": "https://yande.re/post.json?tags="},
-    {"name": "Safebooru", "api": "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags="},
-    {"name": "Danbooru", "api": "https://danbooru.donmai.us/posts.json?tags="}
+    {"name": "Safebooru", "api": "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags="}
 ]
 
-# 3. Giả lập trình duyệt di động để tránh bị chặn IP
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36'
-}
+# Danh sách User-Agent để "xoay tua" giả danh nhiều thiết bị khác nhau
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36'
+]
 
 @bot.message_handler(func=lambda m: True)
 def handle_logic(message):
     try:
         raw_text = message.text.strip().lower()
         is_r18 = "r18" in raw_text
-        target = raw_text.replace("r18", "").replace("/", "").replace("tìm", "").strip().replace(" ", "_")
+        target = raw_text.replace("r18", "").replace("/", "").strip().replace(" ", "_")
         
         if not target or "ngẫu nhiên" in target:
-            target = random.choice(["raiden_shogun", "yelan", "mona", "tifa_lockhart", "yae_miko"])
+            target = random.choice(["raiden_shogun", "yelan", "tifa_lockhart", "yae_miko"])
 
         bot.send_chat_action(message.chat.id, 'upload_photo')
-        
-        # Xáo trộn nguồn ảnh để không trang nào bị quá tải
-        random.shuffle(SOURCES) 
+        random.shuffle(SOURCES)
         success = False
         
         for source in SOURCES:
             try:
-                # Tạo tag tìm kiếm theo chuẩn của từng web
-                search_tags = f"{target}+rating:explicit" if is_r18 else f"{target}+rating:general"
-                if source['name'] == "Danbooru": # Danbooru dùng tag khác một chút
-                    search_tags = f"{target}+rating:s" if not is_r18 else f"{target}+rating:e"
+                tag_r18 = "rating:explicit" if is_r18 else "rating:general"
+                api_url = f"{source['api']}{target}+{tag_r18}&limit=25"
                 
-                api_url = f"{source['api']}{search_tags}&limit=30"
+                # Sử dụng session và xoay tua User-Agent
+                resp = session.get(api_url, headers={'User-Agent': random.choice(USER_AGENTS)}, timeout=12)
                 
-                # Gọi API với Timeout 15 giây và Header giả lập
-                response = requests.get(api_url, headers=HEADERS, timeout=15)
-                posts = response.json()
-                
-                # Xử lý dữ liệu trả về tùy theo cấu trúc từng trang
-                if not isinstance(posts, list): 
-                    posts = posts.get('post', []) or posts.get('posts', [])
-
-                if posts:
-                    random.shuffle(posts)
-                    media = []
-                    for p in posts[:3]: # Lấy 3 tấm cho nhanh
-                        url = p.get('file_url') or p.get('sample_url') or p.get('large_file_url')
-                        if url:
-                            if url.startswith('//'): url = 'https:' + url
-                            media.append(telebot.types.InputMediaPhoto(url))
+                if resp.status_code == 200:
+                    posts = resp.json()
+                    if not isinstance(posts, list): posts = posts.get('post', []) or posts.get('posts', [])
                     
-                    if media:
-                        bot.send_media_group(message.chat.id, media)
-                        success = True
-                        break # Đã có ảnh, thoát vòng lặp
-            except:
-                continue # Nếu nguồn này lỗi (403, 404, Timeout), nhảy sang nguồn tiếp theo ngay
+                    if posts:
+                        random.shuffle(posts)
+                        media = []
+                        for p in posts[:3]:
+                            url = p.get('file_url') or p.get('sample_url')
+                            if url:
+                                if url.startswith('//'): url = 'https:' + url
+                                media.append(telebot.types.InputMediaPhoto(url))
+                        
+                        if media:
+                            bot.send_media_group(message.chat.id, media)
+                            success = True; break
+                time.sleep(0.5) # Nghỉ ngắn để tránh bị nghi ngờ spam
+            except Exception: continue
         
         if not success:
-            bot.send_message(message.chat.id, f"❌ Đội trưởng ơi, hiện tại 7 nguồn ảnh đều đang chặn IP của Render. Ngài hãy vào Render nhấn 'Suspend' rồi 'Resume' để đổi IP mới nhé!")
+            bot.send_message(message.chat.id, "❌ Các nguồn ảnh vẫn đang chặn IP của Render. Đội trưởng hãy nhấn 'Suspend' rồi 'Resume' trên web Render để đổi IP mới nhé!")
 
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Lỗi hệ thống: {str(e)}")
+        bot.send_message(message.chat.id, f"⚠️ Lỗi: {str(e)}")
 
-def run():
-    # 4. Cơ chế chống lỗi 409 Conflict triệt để
-    try:
-        bot.remove_webhook()
-        time.sleep(2) # Nghỉ 2 giây để Telegram xóa hẳn phiên cũ
-        print("Bronya is starting...")
-        bot.infinity_polling(skip_pending=True)
-    except Exception as e:
-        print(f"Polling Error: {e}")
-        time.sleep(5)
-        run()
+def run_bot():
+    while True:
+        try:
+            bot.remove_webhook()
+            time.sleep(2)
+            bot.infinity_polling(timeout=20, long_polling_timeout=10)
+        except Exception: time.sleep(5)
 
 if __name__ == "__main__":
-    # Chạy bot trong một luồng riêng để Flask có thể sống song song
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=run_bot, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
