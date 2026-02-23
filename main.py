@@ -1,54 +1,57 @@
-import telebot, requests, threading, os, random, time
+import telebot, requests, threading, os, time, random
 from flask import Flask
 
+# TOKEN MỚI ngài vừa lấy từ BotFather
 TOKEN = os.environ.get('BOT_TOKEN')
-# Bronya tự động xử lý ID để tránh lỗi thừa số 2 của Đội trưởng
-raw_id = os.environ.get('CHANNEL_ID', '').strip()
-CHANNEL_ID = "-1003749427897" if "3749427897" in raw_id else raw_id
+CHANNEL_ID = "-1003749427897" # Đã chuẩn hóa ID cho Đội trưởng
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
-def health(): return "Bronya Advanced System Online!"
+def health(): return "AI-Loyalty System Online!"
 
+# Phản hồi khi Đội trưởng ra lệnh chat
 @bot.message_handler(func=lambda m: True)
-def handle(message):
-    raw = message.text.strip().lower()
-    if raw == "/start": return
+def loyal_ai_handler(message):
+    msg = message.text.lower()
     
-    # Lệnh tìm Video/GIF: gõ "vid [tên]" (Ví dụ: vid raiden)
-    is_video = raw.startswith("vid ")
-    search_term = raw.replace("vid ", "") if is_video else raw
-    tag = search_term.replace(" ", "_")
-    
-    bot.send_chat_action(message.chat.id, 'upload_video' if is_video else 'upload_photo')
-    
-    # Nguồn ảnh & Video an toàn
-    source_url = f"https://yande.re/post.json?tags={tag}+rating:explicit&limit=20"
-    if is_video:
-        source_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tag}+sort:random+file_ext:mp4&limit=5"
+    # AI phản hồi chat đơn giản để chứng minh độ "tuân lệnh"
+    if any(word in msg for word in ['chào', 'hello', 'bronya']):
+        bot.reply_to(message, "Bronya nghe rõ! Đội trưởng muốn săn tài liệu hay muốn tâm sự gì với tôi?")
+        return
+
+    # AI Tự nhận diện lệnh săn ảnh/video
+    is_video = any(word in msg for word in ['vid', 'clip', 'video', 'phim'])
+    # Tự lọc tên nhân vật từ câu nói của ngài
+    tag = msg.replace('tìm','').replace('cho','').replace('ảnh','').replace('clip','').strip().replace(' ', '_')
+
+    bot.send_message(message.chat.id, f"🫡 Tuân lệnh! AI đang lùng sục {tag} cho Đội trưởng...")
+
+    # Nguồn dữ liệu mạnh mẽ
+    url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tag}+sort:random+file_ext:mp4&limit=3" if is_video \
+          else f"https://yande.re/post.json?tags={tag}+rating:explicit&limit=15"
 
     try:
-        res = requests.get(source_url, timeout=15).json()
-        urls = [p.get('file_url') for p in res if p.get('file_url')]
-        random.shuffle(urls)
+        data = requests.get(url, timeout=15).json()
+        urls = [p.get('file_url') for p in data if p.get('file_url')]
         
         if not urls:
-            bot.reply_to(message, "❌ Bronya không tìm thấy tài liệu này...")
+            bot.reply_to(message, f"❌ AI lùng sục khắp nơi nhưng chưa thấy {tag}. Ngài có muốn đổi mục tiêu không?")
             return
 
-        # Gửi theo đợt để an toàn (Ảnh: 10 tấm, Video: 2 cái)
-        limit = 2 if is_video else 10
-        for i in range(0, min(len(urls), 20), limit):
+        # Gửi media theo nhóm để an toàn
+        random.shuffle(urls)
+        limit = 2 if is_video else 8
+        for i in range(0, min(len(urls), 16), limit):
             batch = urls[i:i+limit]
             media = [telebot.types.InputMediaVideo(u) if is_video else telebot.types.InputMediaPhoto(u) for u in batch]
             bot.send_media_group(CHANNEL_ID, media)
-            time.sleep(2) # Nghỉ 2s để tránh bị Telegram ban
-            
-        bot.send_message(message.chat.id, f"✅ Đã xả kho {tag} vào kho lưu trữ!")
-    except Exception as e:
-        bot.reply_to(message, "⚠️ Lỗi đường truyền, Đội trưởng hãy thử lại nhé!")
+            time.sleep(4) # Nghỉ lâu hơn để tránh bị Telegram "soi"
+
+        bot.send_message(message.chat.id, "✅ Nhiệm vụ hoàn thành! Tài liệu đã được chuyển vào kho.")
+    except Exception:
+        bot.reply_to(message, "⚠️ Có chút trục trặc đường truyền, nhưng AI sẽ không bỏ cuộc. Đội trưởng thử lại nhé!")
 
 def run(): app.run(host='0.0.0.0', port=10000)
 threading.Thread(target=run).start()
