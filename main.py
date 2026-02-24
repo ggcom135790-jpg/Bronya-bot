@@ -6,22 +6,24 @@ TOKEN = "8575665648:AAFHFzD2IIPQLYAZOQw08Hf3iN-naNXDyWU".strip()
 CHANNEL_ID = "-1003749427897"
 bot = telebot.TeleBot(TOKEN)
 
-# 🛑 LỆNH CƯỠNG CHẾ: Xóa sạch mọi kết nối cũ để diệt lỗi 409
+# ✅ Xóa kết nối cũ một cách an toàn nhất
 try:
     bot.remove_webhook()
     requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True")
-except: pass
-time.sleep(3)
+except:
+    pass
+time.sleep(5) # Nghỉ 5 giây để Telegram reset hoàn toàn
 
 CHARACTERS = ["march_7th", "seele", "bronya_rand", "silver_wolf", "firefly", "acheron", "robin_honkai", "ganyu", "raiden_shogun", "kafka", "black_swan"]
 history = set()
-OBEDIENT_PHRASES = ["Tuân lệnh Đội trưởng... 💋", "Mọi mệnh lệnh của ngài là tuyệt đối.", "Vâng ạ, em sẽ ngoan mà... 🤤"]
+OBEDIENT_PHRASES = ["Tuân lệnh Đội trưởng... 💋", "Em sẽ ngoan mà, ngài đừng giận nhé... 🤤"]
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "🦾 Bronya v5.6: Absolute Stability is Live!"
+def home(): return "🦾 Bronya v5.7: Anti-Conflict Mode is Live!"
 
+# --- Logic tìm ảnh/video giữ nguyên ---
 def download_video(url, message):
     try:
         ydl_opts = {'format': 'best', 'outtmpl': 'video.mp4', 'max_filesize': 50 * 1024 * 1024}
@@ -63,14 +65,13 @@ def handle(message):
             history.clear()
     except: pass
 
-# --- KHỞI ĐỘNG SIÊU BỀN BỈ ---
+# --- KHỞI ĐỘNG VÒNG LẶP VÔ TẬN (NÉ LỖI 409) ---
 if __name__ == "__main__":
-    # Chạy Flask ở luồng riêng
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000))), daemon=True).start()
     
-    # Sử dụng polling thường với cơ chế tự khởi động lại khi dính lỗi 409
+    print("🚀 Bronya đang kết nối...")
     while True:
         try:
-            bot.polling(none_stop=True, interval=2, timeout=20)
-        except Exception:
-            time.sleep(5) # Đợi 5 giây rồi thử lại nếu bị lỗi
+            bot.polling(none_stop=True, interval=5, timeout=20) # Tăng interval để giảm xung đột
+        except Exception as e:
+            time.sleep(10) # Nếu dính lỗi 409, nghỉ 10 giây rồi tự kết nối lại
