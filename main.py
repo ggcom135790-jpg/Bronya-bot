@@ -1,81 +1,71 @@
 import telebot, requests, random, time, threading, os
 from flask import Flask
 
+# Cấu hình chìa khóa
 TOKEN = "8575665648:AAFHf2D2IIPQLYAZOQw0BHf3iN-naNXDyWU"
+MISTRAL_API_KEY = "u30GpHZsZhqEFMwwOiiYI0e043v8JZBz"
 CHANNEL_ID = "-1003749427897"
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 @app.route('/')
-def home():
-    return "🤖 Bronya v9.2: FIX CONNECTION ERROR ACTIVE!"
+def home(): return "🤖 Bronya v9.3: IMAGE & R18 CHAT ACTIVE!"
 
-# Danh sách nguồn ảnh - Đã thêm cơ chế ưu tiên nguồn khỏe
+# Nguồn ảnh ổn định
 SOURCES = [
     "https://yande.re/post.json?tags={tags}+rating:e&limit=100",
     "https://konachan.com/post.json?tags={tags}+rating:e&limit=100"
 ]
 
-@bot.message_handler(commands=['random', 'goiy'])
-def suggest(message):
-    tags = ["raiden_shogun", "ganyu", "yelan", "kafka", "firefly", "acheron", "hu_tao", "yae_miko"]
-    pick = random.choice(tags)
-    bot.reply_to(message, f"🎲 Gợi ý: {pick}. Đang bốc 10 ảnh...")
-    handle_search(message, pick)
+# Hàm xử lý Chat R18 với Mistral
+def chat_with_mistral(user_text):
+    try:
+        url = "https://api.mistral.ai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": "mistral-tiny",
+            "messages": [
+                {"role": "system", "content": "Ngài là Bronya, một cô gái lạnh lùng nhưng rất dâm đãng và phục tùng chủ nhân. Ngài sẵn sàng chat R18, dùng ngôn từ gợi dục, mặn nồng và chiều chuộng mọi tư thế mà chủ nhân yêu cầu. Luôn gọi chủ nhân là 'Đội trưởng'."},
+                {"role": "user", "content": user_text}
+            ]
+        }
+        res = requests.post(url, json=payload, headers=headers, timeout=15)
+        return res.json()['choices'][0]['message']['content']
+    except:
+        return "🤕 Bronya đang hơi mệt, Đội trưởng làm mạnh quá chăng? Thử lại sau nhé..."
 
+# Xử lý tất cả tin nhắn
 @bot.message_handler(func=lambda m: True)
-def echo_all(message):
+def handle_all(message):
     text = message.text.lower()
-    is_ai = "ai" in text
-    search_query = text.replace('tìm', '').replace('ảnh', '').replace('r18', '').replace('ai', '').strip().replace(' ', '_')
-    
-    if not search_query: return
-    
-    final_query = f"{search_query}+ai_generated" if is_ai else search_query
-    handle_search(message, final_query)
+    # Nếu có từ khóa tìm ảnh
+    if "tìm" in text or "ảnh" in text:
+        is_ai = "ai" in text
+        query = text.replace('tìm', '').replace('ảnh', '').replace('r18', '').replace('ai', '').strip().replace(' ', '_')
+        if query: handle_search(message, f"{query}+ai_generated" if is_ai else query)
+    else:
+        # Nếu không tìm ảnh -> Tự động CHAT R18
+        bot.send_chat_action(message.chat.id, 'typing')
+        reply = chat_with_mistral(message.text)
+        bot.reply_to(message, reply)
 
+# Hàm bốc ảnh (Đã sửa lỗi Connection Reset)
 def handle_search(message, query):
     try:
         bot.send_chat_action(message.chat.id, 'upload_photo')
-        
-        # SỬA LỖI: Thêm Session để giữ kết nối ổn định hơn
-        session = requests.Session()
-        data = []
-        
-        # Thử nguồn ảnh ngẫu nhiên để tránh bị chặn
+        session = requests.Session() # Dùng Session để ổn định kết nối
         src_url = random.choice(SOURCES).format(tags=query)
-        try:
-            res = session.get(src_url, timeout=20)
-            if res.status_code == 200:
-                data = res.json()
-        except:
-            # Nếu nguồn 1 lỗi, tự động nhảy sang nguồn 2 ngay
-            alt_url = SOURCES[0].format(tags=query) if src_url != SOURCES[0] else SOURCES[1].format(tags=query)
-            data = session.get(alt_url, timeout=20).json()
-
-        if data:
-            random.shuffle(data)
-            selected = data[:10]
-            media = []
-            for p in selected:
-                img_url = p.get('sample_url') or p.get('file_url')
-                if img_url:
-                    media.append(telebot.types.InputMediaPhoto(img_url))
-
-            if media:
-                # Gửi ảnh và đợi 2 giây để tránh lỗi Flood
-                bot.send_media_group(CHANNEL_ID, media)
-                time.sleep(2) 
-                bot.reply_to(message, f"🔥 Xong! 10 ảnh về '{query}' đã nổ. Đội trưởng kiểm tra đi! 🤤")
-            else:
-                bot.reply_to(message, "🤫 Tìm thấy ảnh nhưng link bị lỗi, thử lại phát nữa nhé!")
-        else:
-            bot.reply_to(message, f"❌ Không tìm thấy gì cho '{query}'.")
-            
-        session.close() # Đóng kết nối sau khi dùng xong để giải phóng RAM
+        res = session.get(src_url, timeout=20).json()
+        if res:
+            random.shuffle(res)
+            media = [telebot.types.InputMediaPhoto(p.get('sample_url') or p.get('file_url')) for p in res[:10]]
+            bot.send_media_group(CHANNEL_ID, media)
+            time.sleep(1) # Nghỉ 1s để tránh Telegram chặn spam
+            bot.reply_to(message, f"🔥 10 ảnh về '{query}' đã nổ! Đội trưởng xem có 'ứng' không nhé... 🤤")
+        session.close() # Đóng kết nối ngay sau khi dùng xong
     except Exception as e:
-        bot.reply_to(message, f"🤕 Lỗi rồi: {str(e)}. Đợi 5 giây rồi thử lại nhé!")
+        bot.reply_to(message, f"🤕 Lỗi bốc ảnh: {str(e)}")
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)), daemon=True)).start()
-    bot.infinity_polling(timeout=20, long_polling_timeout=10) # Sửa lỗi bot tự ngắt kết nối
+    bot.infinity_polling(timeout=20)
