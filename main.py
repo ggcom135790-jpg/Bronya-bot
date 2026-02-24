@@ -9,42 +9,43 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
-def health(): return "Bronya Speed Mode Online!"
+def health(): return "Bronya Yande Mode Online!"
 
 @bot.message_handler(func=lambda m: True)
 def speed_ai_handler(message):
     msg = message.text.lower()
     
-    # 🧠 BỘ NÃO THÔNG MINH: Phân biệt Chat và Lệnh tìm
+    # 🧠 BỘ NÃO THÔNG MINH: Tránh tìm kiếm linh tinh
     chat_keywords = ['bao lâu', 'sao lâu', 'nhanh', 'chào', 'bronya', 'đợi']
     if any(word in msg for word in chat_keywords):
-        bot.reply_to(message, "Em đây! Đường truyền đang hơi kẹt vì các web nguồn hay chặn IP. Anh đợi em vài phút, em đang lách luật để gửi ảnh cho anh đây! ⚡")
+        bot.reply_to(message, "Em đây! Đội trưởng đợi em vài giây, em đang kết nối tới kho ảnh Yande để lấy hàng chất lượng cao cho anh đây! ⚡")
         return
 
-    # 🚀 CHẾ ĐỘ TÌM KIẾM NHANH: Chỉ tìm khi ngài ra lệnh thực sự
-    is_video = any(word in msg for word in ['vid', 'clip', 'video'])
-    tag = msg.replace('tìm','').replace('cho','').replace('ảnh','').replace('clip','').strip().replace(' ', '_')
+    # 🚀 CHẾ ĐỘ TÌM KIẾM MỚI (Yande.re)
+    tag = msg.replace('tìm','').replace('cho','').replace('ảnh','').strip().replace(' ', '_')
+    if len(tag) < 2: return 
 
-    if len(tag) < 2: return # Tránh tìm kiếm linh tinh khi ngài chỉ chat ngắn
+    bot.send_message(message.chat.id, f"🚀 Đã chuyển sang nguồn Yande! Đang lùng sục ảnh '{tag}' cực nét cho anh...")
 
-    bot.send_message(message.chat.id, f"🚀 Tuân lệnh! Em đang dùng 'kênh ưu tiên' tìm {tag} cho anh...")
-
-    # Giảm giới hạn để gửi cực nhanh, tránh bị Telegram treo
-    url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags={tag}" + ("+file_ext:mp4&limit=1" if is_video else "&limit=3")
+    # Sử dụng API của Yande.re để tránh bị chặn IP như Rule34
+    url = f"https://yande.re/post.json?tags={tag}&limit=3"
 
     try:
-        data = requests.get(url, timeout=5).json()
-        urls = [p.get('file_url') for p in data if p.get('file_url')]
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        # Lấy URL ảnh (ưu tiên ảnh sample để gửi nhanh hơn)
+        urls = [p.get('sample_url') or p.get('file_url') for p in data if (p.get('sample_url') or p.get('file_url'))]
         
         if urls:
-            # Gửi ngay lập tức đợt đầu
             media = [telebot.types.InputMediaPhoto(u) for u in urls[:3]]
             bot.send_media_group(CHANNEL_ID, media)
-            bot.send_message(message.chat.id, "✅ Hàng về trong kho rồi anh ơi!")
+            bot.send_message(message.chat.id, "✅ Hàng Yande cực nét đã về kho rồi anh ơi!")
         else:
-            bot.reply_to(message, "❌ Em lục tung cả kho mà chưa thấy nhân vật này. Anh thử tên khác xem?")
-    except:
-        bot.reply_to(message, "⚠️ Web nguồn đang 'khó ở', anh đợi 5 phút rồi gọi em tìm lại nhé!")
+            bot.reply_to(message, "❌ Nguồn Yande cũng không có nhân vật này. Đội trưởng kiểm tra lại tên tiếng Anh xem sao?")
+    except Exception as e:
+        print(f"Error: {e}")
+        bot.reply_to(message, "⚠️ Có vẻ IP server vẫn đang bị 'cấm túc'. Đội trưởng thử Restart lại Render để đổi IP nhé!")
 
 def run(): app.run(host='0.0.0.0', port=10000)
 threading.Thread(target=run).start()
