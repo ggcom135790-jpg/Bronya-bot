@@ -5,53 +5,76 @@ TOKEN = "8575665648:AAFHf2D2IIPQLYAZOQw0BHf3iN-naNXDyWU"
 CHANNEL_ID = "-1003749427897"
 bot = telebot.TeleBot(TOKEN)
 
-# Khắc phục triệt để lỗi 409 và Webhook
-try:
-    bot.remove_webhook()
-    requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True")
-except:
-    pass
-
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "🤖 Bronya v8.1: 10-IMAGE MODE IS LIVE!"
+    return "🤖 Bronya v9.1: ULTIMATE MODE ACTIVE!"
+
+# Đầy đủ nguồn ảnh để chống lỗi Connection Reset
+SOURCES = [
+    "https://yande.re/post.json?tags={tags}+rating:e&limit=100",
+    "https://konachan.com/post.json?tags={tags}+rating:e&limit=100",
+    "https://danbooru.donmai.us/posts.json?tags={tags}+rating:explicit&limit=100"
+]
+
+@bot.message_handler(commands=['random', 'goiy'])
+def suggest(message):
+    tags = ["raiden_shogun", "ganyu", "yelan", "kafka", "firefly", "acheron", "hu_tao", "yae_miko", "navia", "clorinde"]
+    pick = random.choice(tags)
+    bot.reply_to(message, f"🎲 Gợi ý cực phẩm cho Đội trưởng: {pick}. Đang chuẩn bị 10 ảnh...")
+    handle_search(message, pick)
 
 @bot.message_handler(func=lambda m: True)
-def handle(message):
+def echo_all(message):
+    text = message.text.lower()
+    # Tính năng AI R18: Nhận diện từ khóa 'ai'
+    is_ai = "ai" in text
+    search_query = text.replace('tìm', '').replace('ảnh', '').replace('r18', '').replace('ai', '').strip().replace(' ', '_')
+    
+    if not search_query: return
+    
+    # Nếu có chữ 'ai', bot sẽ ưu tiên tìm ảnh AI
+    final_query = f"{search_query}+ai_generated" if is_ai else search_query
+    handle_search(message, final_query)
+
+def handle_search(message, query):
     try:
-        text = message.text.lower()
-        search_query = text.replace('tìm', '').replace('ảnh', '').replace('r18', '').replace('cho', '').strip().replace(' ', '_')
-
-        if not search_query:
-            return
-
-        bot.reply_to(message, f"🤖 Nhận lệnh! Bronya đang thâm nhập kho ảnh 'full không che' về '{search_query}' cho ngài... 🤤")
-
-        # Lấy tối đa 100 kết quả để xáo trộn cho mới mẻ
-        url = f"https://yande.re/post.json?tags={search_query}+rating:e&limit=100"
-        data = requests.get(url, timeout=10).json()
+        bot.send_chat_action(message.chat.id, 'upload_photo')
+        
+        # Cơ chế đa nguồn thông minh: Thử lần lượt các nguồn nếu bị lỗi kết nối
+        random.shuffle(SOURCES)
+        data = []
+        for src in SOURCES:
+            try:
+                url = src.format(tags=query)
+                res = requests.get(url, timeout=15)
+                if res.status_code == 200:
+                    data = res.json()
+                    if data: break
+            except:
+                continue
 
         if data:
             random.shuffle(data)
-            # NÂNG CẤP: Lấy đúng 10 ảnh như Đội trưởng yêu cầu
-            selected = data[:10] 
-            
-            media = [telebot.types.InputMediaPhoto(p['sample_url']) for p in selected if 'sample_url' in p]
+            # Lấy đúng 10 ảnh chất lượng cao
+            selected = data[:10]
+            media = []
+            for p in selected:
+                # Lọc link ảnh chất lượng nhất có thể
+                img_url = p.get('sample_url') or p.get('file_url') or p.get('large_file_url')
+                if img_url:
+                    media.append(telebot.types.InputMediaPhoto(img_url))
 
             if media:
-                # Gửi cả cụm 10 ảnh vào Channel
                 bot.send_media_group(CHANNEL_ID, media)
-                bot.send_message(message.chat.id, f"🔥 Hàng cực nặng về '{search_query}' đã nổ ở Channel rồi ạ! Đội trưởng vào kiểm tra ngay! 🤤")
+                bot.reply_to(message, f"🔥 10 ảnh {'AI ' if 'ai_generated' in query else ''}về '{query}' đã nổ ở Channel! Mời Đội trưởng thưởng thức! 🤤")
             else:
-                bot.reply_to(message, "🤫 Tìm thấy ảnh nhưng link bị lỗi, để em thử lại...")
+                bot.reply_to(message, "🤫 Ảnh tìm thấy nhưng link bị 'vỡ', Đội trưởng thử lại lần nữa nhé!")
         else:
-            bot.reply_to(message, f"❌ Bronya không tìm thấy ảnh R18 nào của '{search_query}'. Ngài thử gõ tên nhân vật khác xem?")
+            bot.reply_to(message, f"❌ Không tìm thấy ảnh {'AI ' if 'ai_generated' in query else ''}nào của '{query}'. Thử tên khác đi ngài!")
     except Exception as e:
-        # Đã sửa lỗi chính tả reply_to ở đây
         bot.reply_to(message, f"🤕 Lỗi hệ thống: {str(e)}")
 
 if __name__ == "__main__":
-    # Chạy Flask ở Port 10000 để Koyeb báo Healthy
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)), daemon=True)).start()
     bot.infinity_polling()
