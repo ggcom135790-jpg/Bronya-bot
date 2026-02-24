@@ -32,7 +32,7 @@ def handle(message):
         
         if data:
             random.shuffle(data)
-            selected = data[:5]
+            selected = data[:10]
             # Sử dụng sample_url để load ảnh nhanh, tránh lỗi Webpage Media Empty
             media = [telebot.types.InputMediaPhoto(p['sample_url']) for p in selected if 'sample_url' in p]
             
