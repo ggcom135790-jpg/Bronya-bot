@@ -47,5 +47,5 @@ def handle(message):
         bot.reply_to(message, f"🥺 Lỗi hệ thống: {str(e)}")
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000))), daemon=True).start()
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8000))), daemon=True).start()
     bot.infinity_polling()
