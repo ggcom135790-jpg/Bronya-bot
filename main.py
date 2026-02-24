@@ -47,3 +47,10 @@ def dual_engine_handler(message):
             bot.reply_to(message, "⚠️ Yande đang quá tải, anh đợi xíu nhé!")
 
 bot.infinity_polling()
+import os
+
+# Thêm đoạn này vào phần cuối code của ngài
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000)) # Render yêu cầu lấy port từ môi trường
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port)).start()
+    bot.infinity_polling()
