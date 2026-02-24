@@ -6,9 +6,10 @@ TOKEN = "8575665648:AAFHFzD2IIPQLYAZOQw08Hf3iN-naNXDyWU".strip()
 CHANNEL_ID = "-1003749427897"
 bot = telebot.TeleBot(TOKEN)
 
-# Diệt tận gốc lỗi 409 Conflict
-bot.remove_webhook(drop_pending_updates=True)
-time.sleep(3)
+# ✅ Cách xóa tin nhắn rác chuẩn để không bị lỗi TypeError
+bot.remove_webhook()
+requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True")
+time.sleep(2)
 
 CHARACTERS = ["march_7th", "seele", "bronya_rand", "silver_wolf", "firefly", "acheron", "robin_honkai", "ganyu", "raiden_shogun", "kafka", "black_swan"]
 history = set()
@@ -23,7 +24,7 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "🦾 Bronya v5.4: Ready to Serve!"
+def home(): return "🦾 Bronya v5.5: Ultimate Mode is Live!"
 
 # --- Tính năng Tải Video ---
 def download_video(url, message):
@@ -33,7 +34,7 @@ def download_video(url, message):
         with open('video.mp4', 'rb') as video:
             bot.send_video(message.chat.id, video, caption="📽 Video của Đội trưởng đây... 🤤")
         os.remove('video.mp4')
-    except: bot.reply_to(message, "🥺 Video lỗi hoặc nặng quá rồi ngài ơi...")
+    except: bot.reply_to(message, "🥺 Link lỗi hoặc video nặng quá ngài ơi...")
 
 # --- Xử lý lệnh tìm ảnh ---
 @bot.message_handler(func=lambda m: True)
@@ -41,7 +42,7 @@ def handle(message):
     try:
         text = message.text.lower()
         if "http" in text:
-            bot.reply_to(message, "💋 Nhận lệnh! Đợi em tải video nhé...")
+            bot.reply_to(message, "💋 Đội trưởng đợi em tải video nhé...")
             threading.Thread(target=download_video, args=(message.text, message)).start()
             return
         if any(word in text for word in ["ơi", "ngoan", "lệnh"]):
@@ -67,8 +68,8 @@ def handle(message):
             bot.reply_to(message, f"⚠️ Em hết ảnh '{target}' mới rồi, em reset bộ nhớ đây!")
             history.clear()
     except Exception as e:
-        bot.reply_to(message, f"🥺 Lỗi rồi: {str(e)}")
+        bot.reply_to(message, "🥺 Em vấp chân chút, ngài nhắn lại nhé?")
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000))), daemon=True).start()
-    bot.polling(none_stop=True, interval=0, timeout=20)
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
