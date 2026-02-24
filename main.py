@@ -1,7 +1,7 @@
 import telebot, requests, random, time, threading, schedule, os, yt_dlp
 from flask import Flask
 
-TOKEN = "8230688448:AAGto6RNTLJpD5jGWias1NlTF5VSrKjJdXA"
+TOKEN = "8575665648:AAFHFzD2IIPQLYAZOQw08Hf3iN-naNXDyWU "
 CHANNEL_ID = "-1003749427897" 
 bot = telebot.TeleBot(TOKEN)
 
