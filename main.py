@@ -1,52 +1,47 @@
-import telebot, requests, random, time, threading, os, yt_dlp
+import telebot, requests, random, time, threading, os
 from flask import Flask
 
-# --- Cấu hình ---
 TOKEN = "8575665648:AAFHFzD2IIPQLYAZOQw08Hf3iN-naNXDyWU".strip()
-CHANNEL_ID = "-1003749427897" # <-- Đội trưởng nhớ thay ID chuẩn sau khi check nhé!
+CHANNEL_ID = "-1003749427897" 
 bot = telebot.TeleBot(TOKEN)
 
-# Diệt lỗi 409 cũ
+# Diệt sạch lỗi cũ để bot chạy mượt
 bot.remove_webhook(drop_pending_updates=True)
 
-history = set()
 app = Flask(__name__)
 @app.route('/')
-def home(): return "🦾 Bronya v6.2: Image Fix Mode Live!"
+def home(): return "🦾 Bronya v7.0: R18 Unlocked Mode!"
 
 @bot.message_handler(func=lambda m: True)
 def handle(message):
     try:
-        # Mẹo lấy ID Channel: Nếu nhắn tin này TRONG channel, bot sẽ báo ID
-        if message.chat.type in ['channel', 'group', 'supergroup'] and "check id" in message.text.lower():
-            bot.reply_to(message, f"🆔 ID của nơi này là: {message.chat.id}")
-            return
-
         text = message.text.lower()
-        if "tìm" in text or "ảnh" in text:
-            name = text.replace('tìm','').replace('cho','').replace('ảnh','').strip().replace(' ', '_')
-            target = name if name else "raiden_shogun"
-            bot.reply_to(message, f"🦋 Đang săn ảnh '{target}' bản nhẹ cho ngài...")
+        # Loại bỏ các từ thừa để lấy tag chuẩn nhất
+        search_query = text.replace('tìm','').replace('ảnh','').replace('r18','').replace('cho','').strip().replace(' ', '_')
+        
+        if not search_query: return
+        
+        bot.reply_to(message, f"🔞 Nhận lệnh! Bronya đang thâm nhập kho ảnh cực cháy về '{search_query}' cho ngài...")
 
-            url = f"https://yande.re/post.json?tags={target}&limit=100"
-            data = requests.get(url, timeout=10).json()
-            # Dùng 'sample_url' thay vì 'file_url' để tránh lỗi MEDIA_EMPTY
-            pool = [p for p in data if p.get('id') not in history and 'sample_url' in p]
+        # Tự động thêm tag rating:questionable để tìm ảnh "mướt" nhất
+        url = f"https://yande.re/post.json?tags={search_query}+rating:q&limit=50"
+        data = requests.get(url, timeout=10).json()
+        
+        if data:
+            random.shuffle(data)
+            selected = data[:5]
+            # Dùng sample_url để không bị lỗi nặng file
+            media = [telebot.types.InputMediaPhoto(p['sample_url']) for p in selected if 'sample_url' in p]
             
-            if pool:
-                random.shuffle(pool)
-                selected = pool[:5]
-                media = [telebot.types.InputMediaPhoto(item['sample_url']) for item in selected]
-                
-                try:
-                    bot.send_media_group(CHANNEL_ID, media)
-                    bot.send_message(message.chat.id, f"✅ Hàng mướt '{target}' đã về Channel! 🤤")
-                    for item in selected: history.add(item['id'])
-                except Exception as e:
-                    bot.reply_to(message, f"❌ Vẫn lỗi gửi vào Channel: {str(e)}\n\n(ID hiện tại: {CHANNEL_ID})")
+            if media:
+                bot.send_media_group(CHANNEL_ID, media)
+                bot.send_message(message.chat.id, f"✅ Hàng cực phẩm về '{search_query}' đã nổ ở Channel rồi ạ! 🤤")
             else:
-                bot.reply_to(message, "⚠️ Hết ảnh rồi ngài ơi!")
-    except: pass
+                bot.reply_to(message, "🥺 Em tìm thấy link nhưng ảnh lỗi rồi...")
+        else:
+            bot.reply_to(message, f"❌ Bronya vẫn không thấy ảnh '{search_query}'. Đội trưởng thử tìm tên tiếng Anh chuẩn của nhân vật xem? (Ví dụ: raiden_shogun, yelan, kafka)")
+    except Exception as e:
+        bot.reply_to(message, f"🥺 Lỗi: {str(e)}")
 
 if __name__ == "__main__":
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000))), daemon=True).start()
